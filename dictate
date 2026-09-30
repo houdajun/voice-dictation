@@ -1,0 +1,35 @@
+#!/bin/bash
+# 语音听写总控命令：dictate on | off | restart | toggle | status | rec | float on|off|reset
+. "$(dirname "$(readlink -f "$0")")/common.sh"
+
+running() { pgrep -f "$DAEMON_RE" >/dev/null; }
+say() { echo "$1"; notify-send -t 2500 -h string:x-canonical-private-synchronous:dictate-ctl "语音听写" "$1" 2>/dev/null; }
+
+case "${1:-toggle}" in
+    on|start)
+        if running; then say "听写已经开着"; else "$DIR/start_dictate.sh" >/dev/null; say "听写启动中…（约 20 秒后就绪）"; fi ;;
+    off|stop)
+        "$DIR/stop_dictate.sh" >/dev/null; say "听写已关闭，显存已释放" ;;
+    restart)
+        "$DIR/stop_dictate.sh" >/dev/null; "$DIR/start_dictate.sh" >/dev/null; say "听写重启中…（约 20 秒后就绪）" ;;
+    toggle)
+        if running; then "$DIR/stop_dictate.sh" >/dev/null; say "听写已关闭，显存已释放"
+        else "$DIR/start_dictate.sh" >/dev/null; say "听写启动中…（约 20 秒后就绪）"; fi ;;
+    rec)
+        "$DIR/dictate_toggle.sh" ;;
+    float)
+        FLAG="$HOME/.config/dictate/float_disabled"
+        case "$2" in
+            on)  rm -f "$FLAG"; running && pgrep -f "$FLOAT_RE" >/dev/null || { running && nohup "$DICTATE_SYSTEM_PYTHON" "$DIR/float_button.py" >/tmp/dictate_float.log 2>&1 & }
+                 say "悬浮按钮已开启（鼠标变成输入框的 I 形时出现）" ;;
+            off) mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"; pkill -f "$FLOAT_RE"; say "悬浮按钮已关闭" ;;
+            reset) rm -f "$HOME/.config/dictate/float_offset.json"; pkill -f "$FLOAT_RE"
+                 running && [ ! -e "$FLAG" ] && { nohup "$DICTATE_SYSTEM_PYTHON" "$DIR/float_button.py" >/tmp/dictate_float.log 2>&1 & }
+                 say "悬浮按钮已恢复默认位置" ;;
+            *)   if [ -e "$FLAG" ]; then echo "悬浮按钮：已关闭"; else echo "悬浮按钮：已开启"; fi ;;
+        esac ;;
+    status)
+        if running; then echo "运行中（按 Fn+PgUp / Pause 开始与结束）"; else echo "已关闭"; fi ;;
+    *)
+        echo "用法: dictate on | off | restart | toggle | status | rec | float on|off|reset"; exit 1 ;;
+esac
